@@ -1747,3 +1747,92 @@ if (typeof bot !== 'undefined') {
     });
 }
 // ===================================================================
+const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// التوكن من متغيرات البيئة في Render
+const TOKEN = process.env.BOT_TOKEN;
+// رابط السيرفر Render يعطيك اياه تلقائياً
+const URL = process.env.RENDER_EXTERNAL_URL;
+
+// انشاء البوت بدون polling
+const bot = new TelegramBot(TOKEN);
+
+// عشان تيليجرام يقدر يرسل لك الرسائل
+app.use(express.json());
+
+// هذا المسار يستقبل التحديثات من تيليجرام
+app.post(`/bot${TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// مسار عادي عشان UptimeRobot يبقي السيرفر صاحي
+app.get('/', (req, res) => res.send('Bot is running ✅'));
+
+// تشغيل السيرفر وضبط Webhook
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await bot.setWebHook(`${URL}/bot${TOKEN}`);
+  console.log('Webhook set successfully:', `${URL}/bot${TOKEN}`);
+});
+
+// معالجة الرسائل
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+
+  try {
+    if (text === '/flash') {
+      await bot.sendMessage(chatId, 'اختر وضع الكشاف:', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'تشغيل الكشاف', callback_data: 'flash_on' }],
+            [{ text: 'إطفاء الكشاف', callback_data: 'flash_off' }]
+          ]
+        }
+      });
+      return;
+    }
+
+    if (text === 'موافق') {
+      await bot.sendMessage(chatId, 'تم تشغيل الكشاف ✅');
+      return;
+    }
+
+    const seconds = parseInt(text);
+    if (!isNaN(seconds) && seconds > 0 && seconds <= 300) {
+      await bot.sendMessage(chatId, `تم تشغيل الكشاف لمدة ${seconds} ثانية ✅`);
+      setTimeout(() => bot.sendMessage(chatId, 'انطفى الكشاف ❌'), seconds * 1000);
+      return;
+    }
+
+    // لو رسل اي شي ثاني
+    await bot.sendMessage(chatId, 'ارسل /flash لبداية الاستخدام');
+
+  } catch (err) {
+    console.error('Message Error:', err.message);
+  }
+});
+
+// معالجة الأزرار
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  
+  try {
+    if (query.data === 'flash_on') {
+      await bot.sendMessage(chatId, 'تم تشغيل الكشاف ✅');
+      await bot.answerCallbackQuery(query.id);
+    }
+    if (query.data === 'flash_off') {
+      await bot.sendMessage(query.message.chat.id, 'تم إطفاء الكشاف ❌');
+      await bot.answerCallbackQuery(query.id);
+    }
+  } catch (err) {
+    console.error('Callback Error:', err.message);
+  }
+});
+
+console.log('Bot started...');
